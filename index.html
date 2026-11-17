@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriVision AI - Pest & Leaf/Stem Damage Detector</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, rgba(34,197,94,0) 0%, rgba(34,197,94,1) 50%, rgba(34,197,94,0) 100%);
+            box-shadow: 0 0 15px #22c55e;
+            animation: scan 2s infinite ease-in-out;
+        }
+
+        @keyframes scan {
+            0% { top: 0%; opacity: 0.8; }
+            50% { opacity: 1; }
+            100% { top: 100%; opacity: 0.8; }
+        }
+
+        .bounding-box {
+            position: absolute;
+            border: 2px dashed #22c55e;
+            background: rgba(34, 197, 94, 0.15);
+            box-shadow: 0 0 12px rgba(34, 197, 94, 0.4);
+            animation: pulse-border 1.8s infinite;
+        }
+
+        @keyframes pulse-border {
+            0%, 100% { border-color: #22c55e; }
+            50% { border-color: #86efac; }
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased">
+
+    <!-- Header & Navigation -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Brand Title -->
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center shadow-lg shadow-brand-500/20 text-slate-950 text-lg">
+                        <i class="fa-solid fa-leaf"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg leading-tight tracking-tight text-white flex items-center gap-2">
+                            AgriVision <span class="bg-gradient-to-r from-brand-400 to-emerald-300 bg-clip-text text-transparent">AI</span>
+                        </h1>
+                        <p class="text-xs text-slate-400 hidden sm:block">Pest & Leaf/Stem Damage Computer Vision System</p>
+                    </div>
+                </div>
+
+                <!-- Model Mode Indicator -->
+                <div class="flex items-center gap-2">
+                    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-brand-400">
+                        <span class="w-2 h-2 rounded-full bg-brand-400 animate-pulse"></span>
+                        Powered by Gemini Vision AI
+                    </span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+            <!-- Left Column: Image Upload & Presets (5 cols) -->
+            <div class="lg:col-span-5 space-y-5">
+                
+                <!-- Upload Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative">
+                    <h2 class="text-sm font-bold text-slate-200 mb-3 flex items-center justify-between">
+                        <span class="flex items-center gap-2">
+                            <i class="fa-solid fa-cloud-arrow-up text-brand-400"></i>
+                            Image Input Area
+                        </span>
+                        <span class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md font-mono">Pest OR Damaged Leaf/Stem</span>
+                    </h2>
+
+                    <!-- Interactive Drop Area -->
+                    <div id="drop-zone" onclick="document.getElementById('file-input').click()" 
+                         class="group relative border-2 border-dashed border-slate-700 hover:border-brand-500/80 rounded-xl p-6 text-center transition-all duration-300 bg-slate-950/40 hover:bg-slate-950/80 cursor-pointer overflow-hidden flex flex-col items-center justify-center min-h-[260px]">
+                        
+                        <input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+
+                        <!-- Scanner Animation Wrapper -->
+                        <div id="scanner-wrapper" class="relative w-full h-full min-h-[220px] hidden flex items-center justify-center overflow-hidden rounded-lg">
+                            <img id="preview-img" class="max-h-[240px] max-w-full object-contain rounded-lg" src="" alt="Crop scan preview">
+                            <div id="scan-bar" class="scan-line hidden"></div>
+                            <!-- Bounding Box -->
+                            <div id="bounding-box" class="bounding-box hidden">
+                                <span class="absolute -top-6 left-0 bg-brand-500 text-slate-950 font-bold text-[10px] px-1.5 py-0.5 rounded shadow whitespace-nowrap">
+                                    <span id="box-label">Detection Active</span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Upload Placeholder -->
+                        <div id="upload-placeholder" class="space-y-3">
+                            <div class="w-14 h-14 rounded-full bg-slate-800/80 text-brand-400 flex items-center justify-center mx-auto group-hover:scale-110 group-hover:bg-brand-500/10 transition-all duration-300">
+                                <i class="fa-solid fa-camera text-2xl"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-slate-200">Drag & drop pest or crop damage image</p>
+                                <p class="text-xs text-slate-400 mt-1">or click to upload from your device</p>
+                            </div>
+                            <div class="pt-2">
+                                <span class="inline-flex items-center gap-1.5 text-[11px] text-brand-400 bg-brand-500/10 border border-brand-500/20 px-3 py-1 rounded-full font-medium">
+                                    <i class="fa-solid fa-bolt"></i> AI Vision Powered
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Reset / File display -->
+                    <div id="image-actions" class="mt-3 flex items-center justify-between text-xs hidden">
+                        <span id="file-name-display" class="text-slate-400 truncate max-w-[200px]">sample.jpg</span>
+                        <button onclick="resetImage()" class="text-slate-400 hover:text-rose-400 font-medium transition flex items-center gap-1">
+                            <i class="fa-solid fa-rotate-right"></i> Reset Input
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Photo Tips Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+                    <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+                        <i class="fa-solid fa-camera-retro text-brand-400"></i> Tips for an accurate result
+                    </h3>
+                    <ul class="text-xs text-slate-400 space-y-1.5 list-disc list-inside">
+                        <li>Take a close-up in daylight, in focus.</li>
+                        <li>Show the pest itself, or the damaged part (leaf, stem, fruit).</li>
+                        <li>Include a healthy part of the plant next to the damage if you can.</li>
+                        <li>One problem per photo works best.</li>
+                    </ul>
+                    <p class="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 mt-3">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        AI can be wrong. Treat this as guidance only and confirm with your local agriculture officer (KVK) before spraying any chemical. Always follow the pesticide label.
+                    </p>
+                </div>
+            </div>
+
+            <!-- <!-- Right Column: AI Analysis & Diagnostic Results (7 cols) -->
+            <div class="lg:col-span-7 space-y-5">
+                
+                <!-- Waiting Placeholder -->
+                <div id="results-empty" class="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center flex flex-col items-center justify-center min-h-[460px] shadow-xl">
+                    <div class="w-16 h-16 rounded-2xl bg-slate-800/80 text-slate-500 flex items-center justify-center mb-4 border border-slate-700">
+                        <i class="fa-solid fa-microscope text-2xl"></i>
+                    </div>
+                    <h3 id="empty-title" class="text-base font-bold text-slate-300">Awaiting Image Scan</h3>
+                    <p id="empty-text" class="text-xs text-slate-400 max-w-sm mt-1">Upload a clear close-up photo of a pest or a damaged leaf, stem or fruit to get an AI diagnosis.</p>
+                </div>
+
+                <!-- Message Card (healthy / unclear / not a plant / errors) -->
+                <div id="results-message" class="hidden bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center flex flex-col items-center justify-center min-h-[300px] shadow-xl">
+                    <div id="msg-icon" class="w-16 h-16 rounded-2xl bg-slate-800/80 flex items-center justify-center mb-4 border border-slate-700 text-2xl"></div>
+                    <h3 id="msg-title" class="text-base font-bold text-slate-200"></h3>
+                    <p id="msg-text" class="text-sm text-slate-400 max-w-md mt-2"></p>
+                </div>
+
+                <!-- Active Diagnosis Dashboard -->
+                <div id="results-dashboard" class="space-y-5 hidden">
+                    <div class="text-[11px] text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex gap-2">
+                        <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+                        <span>AI-generated guidance, not a certified diagnosis. Confirm with a local agriculture expert before spraying, and follow the product label for dose and safety.</span>
+                    </div>
+                    
+                    <!-- Species & Detection Mode Banner -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
+                        <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span id="res-crop-badge" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-brand-500/10 text-brand-400 border border-brand-500/20 uppercase tracking-wider">Rice Crop</span>
+                                    <span id="res-detection-type" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 uppercase tracking-wider">Stem Damage Diagnosis</span>
+                                </div>
+                                <h2 id="res-pest-name" class="text-2xl font-extrabold text-white mt-1">Yellow Stem Borer</h2>
+                                <p id="res-latin-name" class="text-xs text-slate-400 italic">Scirpophaga incertulas</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-[10px] text-slate-400 uppercase font-semibold">AI Confidence</div>
+                                <div id="res-confidence" class="text-xl font-black text-brand-400">96.8%</div>
+                            </div>
+                        </div>
+
+                        <!-- Detected Symptom / Signature Box -->
+                        <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 flex items-start gap-3">
+                            <i class="fa-solid fa-circle-exclamation text-amber-400 text-base mt-0.5"></i>
+                            <div>
+                                <p class="text-[10px] uppercase font-bold text-slate-400">What the AI sees</p>
+                                <p id="res-symptom-desc" class="text-xs font-semibold text-amber-200 mt-0.5">Drying of central tiller leaf ("Dead Heart") with visible larval entry holes along stem base.</p>
+                            </div>
+                        </div>
+
+                        <p id="res-other" class="hidden text-[11px] text-slate-400 mt-3"></p>
+
+                        <!-- Metrics Grid -->
+                        <div class="grid grid-cols-3 gap-3 pt-3 mt-4 border-t border-slate-800">
+                            <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                                <p class="text-[10px] text-slate-400 font-medium uppercase">Damage Threat</p>
+                                <p id="res-threat-level" class="text-xs font-bold text-amber-400 mt-0.5 flex items-center gap-1">
+                                    <i class="fa-solid fa-triangle-exclamation"></i> High Risk
+                                </p>
+                            </div>
+                            <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                                <p class="text-[10px] text-slate-400 font-medium uppercase">Primary Target</p>
+                                <p id="res-target-part" class="text-xs font-bold text-slate-200 mt-0.5">Stem / Tillers</p>
+                            </div>
+                            <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+                                <p class="text-[10px] text-slate-400 font-medium uppercase">Spread Speed</p>
+                                <p id="res-spread-rate" class="text-xs font-bold text-slate-200 mt-0.5">Rapid (Larval)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Treatment & Pesticide Recommendations -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+                        <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-3">
+                            <i class="fa-solid fa-shield-halved text-brand-400"></i>
+                            Recommended Prevention & Treatments
+                        </h3>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <!-- Organic Management -->
+                            <div class="bg-slate-950/50 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                                <div class="flex items-center gap-1.5 text-emerald-400 text-xs font-bold">
+                                    <i class="fa-solid fa-leaf"></i> Organic / Bio Controls
+                                </div>
+                                <ul id="res-organic-list" class="text-xs text-slate-300 space-y-1.5 list-disc list-inside">
+                                    <!-- Dynamic organic tips -->
+                                </ul>
+                            </div>
+
+                            <!-- Chemical Pesticides -->
+                            <div class="bg-slate-950/50 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                                <div class="flex items-center gap-1.5 text-cyan-400 text-xs font-bold">
+                                    <i class="fa-solid fa-flask"></i> Chemical Pesticide Dosage
+                                </div>
+                                <div class="space-y-1">
+                                    <p id="res-pesticide-name" class="text-xs font-bold text-slate-100">Cartap Hydrochloride 4G</p>
+                                    <p id="res-pesticide-dosage" class="text-[11px] text-slate-300 font-mono bg-slate-900 p-1.5 rounded border border-slate-800">Dosage: 7.5 - 10 kg / acre</p>
+                                    <p id="res-pesticide-instructions" class="text-[11px] text-slate-400 mt-1">Broadcast granular formulations with shallow standing water in paddy fields.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Environmental & Ecological Info -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                        <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                            <i class="fa-solid fa-bug text-brand-400"></i>
+                            Pest Ecological Profile
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            <div class="p-3 bg-slate-950/40 rounded-xl border border-slate-800">
+                                <span class="text-slate-500 text-[10px] block uppercase font-medium">Life Cycle</span>
+                                <span id="res-lifecycle" class="text-slate-300 font-semibold mt-0.5 block">35 - 45 Days</span>
+                            </div>
+                            <div class="p-3 bg-slate-950/40 rounded-xl border border-slate-800">
+                                <span class="text-slate-500 text-[10px] block uppercase font-medium">Favorable Climate</span>
+                                <span id="res-climate" class="text-slate-300 font-semibold mt-0.5 block">28°C - 34°C (Humid)</span>
+                            </div>
+                            <div class="p-3 bg-slate-950/40 rounded-xl border border-slate-800">
+                                <span class="text-slate-500 text-[10px] block uppercase font-medium">Natural Predators</span>
+                                <span id="res-predators" class="text-slate-300 font-semibold mt-0.5 block">Trichogramma Wasps, Spiders</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <footer class="border-t border-slate-800 py-4 px-4 text-center text-[11px] text-slate-500">
+        Free student project. Photos are sent to Google's Gemini API for analysis and are not stored by this site.
+        Results are guidance only, not professional advice.
+    </footer>
+
+    <script>
+        const MAX_DIM = 1024;
+        const $ = (id) => document.getElementById(id);
+        let busy = false;
+
+        function resizeToJpeg(file) {
+            return new Promise((resolve, reject) => {
+                const url = URL.createObjectURL(file);
+                const img = new Image();
+                img.onload = () => {
+                    const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
+                    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+                    const c = document.createElement('canvas');
+                    c.width = w; c.height = h;
+                    c.getContext('2d').drawImage(img, 0, 0, w, h);
+                    URL.revokeObjectURL(url);
+                    resolve(c.toDataURL('image/jpeg', 0.85));
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    reject(new Error('Could not read this image. Please use a JPG or PNG photo.'));
+                };
+                img.src = url;
+            });
+        }
+
+        function showOnly(which) {
+            ['results-empty', 'results-message', 'results-dashboard'].forEach(id => $(id).classList.toggle('hidden', id !== which));
+        }
+
+        function showMessage(kind, title, text) {
+            const icons = {
+                healthy: ['fa-solid fa-circle-check text-brand-400', 'bg-brand-500/10'],
+                info: ['fa-solid fa-circle-info text-sky-400', 'bg-sky-500/10'],
+                error: ['fa-solid fa-circle-exclamation text-rose-400', 'bg-rose-500/10']
+            };
+            const [cls] = icons[kind] || icons.info;
+            $('msg-icon').innerHTML = '<i class="' + cls + '"></i>';
+            $('msg-title').textContent = title;
+            $('msg-text').textContent = text;
+            showOnly('results-message');
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (file) processFile(file);
+            event.target.value = '';
+        }
+
+        async function processFile(file) {
+            if (busy) return;
+            if (!file.type.startsWith('image/')) {
+                showMessage('error', 'Not an image', 'Please choose a photo (JPG, PNG or WebP).');
+                return;
+            }
+            busy = true;
+            let dataUrl;
+            try {
+                dataUrl = await resizeToJpeg(file);
+            } catch (e) {
+                busy = false;
+                showMessage('error', 'Could not open photo', e.message);
+                return;
+            }
+
+            $('upload-placeholder').classList.add('hidden');
+            $('scanner-wrapper').classList.remove('hidden');
+            $('preview-img').src = dataUrl;
+            $('scan-bar').classList.remove('hidden');
+            $('bounding-box').classList.add('hidden');
+            $('image-actions').classList.remove('hidden');
+            $('file-name-display').textContent = file.name || 'crop_image.jpg';
+
+            $('empty-title').textContent = 'Analysing your photo...';
+            $('empty-text').textContent = 'This usually takes 5-10 seconds.';
+            showOnly('results-empty');
+
+            try {
+                const res = await fetch('/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: dataUrl.split(',')[1], mimeType: 'image/jpeg' })
+                });
+                let data;
+                try { data = await res.json(); } catch { data = { error: 'The server took too long. Please try again.' }; }
+
+                if (!res.ok) {
+                    showMessage('error', 'Could not analyse photo', data.error || 'Something went wrong. Please try again.');
+                } else if (data.status === 'ok') {
+                    populateDashboard(data);
+                    showOnly('results-dashboard');
+                } else if (data.status === 'healthy') {
+                    showMessage('healthy', 'Plant looks healthy', data.message || 'No clear pest or damage was found in this photo.');
+                } else if (data.status === 'not_plant') {
+                    showMessage('info', 'No plant or pest found', data.message || 'Please upload a photo of a crop, leaf, stem or insect.');
+                } else {
+                    showMessage('info', 'Not enough detail to say', data.message || 'Try a closer, sharper photo in good light.');
+                }
+            } catch (e) {
+                showMessage('error', 'Connection problem', 'Could not reach the server. Check your internet and try again.');
+            } finally {
+                $('scan-bar').classList.add('hidden');
+                $('empty-title').textContent = 'Awaiting Image Scan';
+                $('empty-text').textContent = 'Upload a clear close-up photo of a pest or a damaged leaf, stem or fruit to get an AI diagnosis.';
+                busy = false;
+            }
+        }
+
+        function populateDashboard(p) {
+            $('res-crop-badge').textContent = p.crop + ' Crop';
+            $('res-detection-type').textContent = p.detectionType;
+            $('res-pest-name').textContent = p.name;
+            $('res-latin-name').textContent = p.latin;
+            $('res-confidence').textContent = p.confidencePercent + '%';
+            $('res-symptom-desc').textContent = p.symptom || 'See diagnosis above.';
+
+            const other = $('res-other');
+            if (p.otherPossibilities) {
+                other.textContent = 'Other possibilities: ' + p.otherPossibilities;
+                other.classList.remove('hidden');
+            } else {
+                other.classList.add('hidden');
+            }
+
+            const threat = $('res-threat-level');
+            const color = p.threat === 'High Risk' ? 'text-rose-400' : p.threat === 'Low Risk' ? 'text-brand-400' : 'text-amber-400';
+            threat.className = 'text-xs font-bold mt-0.5 flex items-center gap-1 ' + color;
+            threat.textContent = '';
+            const icon = document.createElement('i');
+            icon.className = 'fa-solid fa-triangle-exclamation';
+            threat.appendChild(icon);
+            threat.appendChild(document.createTextNode(' ' + p.threat));
+
+            $('res-target-part').textContent = p.target;
+            $('res-spread-rate').textContent = p.spread;
+
+            const list = $('res-organic-list');
+            list.textContent = '';
+            (p.organic.length ? p.organic : ['No specific organic advice available.']).forEach(t => {
+                const li = document.createElement('li');
+                li.textContent = t;
+                list.appendChild(li);
+            });
+
+            $('res-pesticide-name').textContent = p.pesticide;
+            $('res-pesticide-dosage').textContent = 'Typical dose: ' + p.dosage + ' (follow product label)';
+            $('res-pesticide-instructions').textContent = p.instructions;
+
+            $('res-lifecycle').textContent = p.lifecycle;
+            $('res-climate').textContent = p.climate;
+            $('res-predators').textContent = p.predators;
+        }
+
+        function resetImage() {
+            $('upload-placeholder').classList.remove('hidden');
+            $('scanner-wrapper').classList.add('hidden');
+            $('image-actions').classList.add('hidden');
+            $('file-input').value = '';
+            showOnly('results-empty');
+        }
+
+        // Drag & drop support
+        const dz = $('drop-zone');
+        ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('border-brand-500'); }));
+        ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('border-brand-500'); }));
+        dz.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) processFile(f); });
+    </script>
+</body>
+</html>
