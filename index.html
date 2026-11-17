@@ -413,7 +413,13 @@
                     body: JSON.stringify({ image: dataUrl.split(',')[1], mimeType: 'image/jpeg' })
                 });
                 let data;
-                try { data = await res.json(); } catch { data = { error: 'The server took too long. Please try again.' }; }
+                try { data = await res.json(); } catch {
+                    const hint = res.status === 404 ? 'The AI function was not found (HTTP 404). It may not be deployed.'
+                        : (res.status === 504 || res.status === 502) ? 'The server timed out (HTTP ' + res.status + '). Please try again.'
+                        : res.status === 401 || res.status === 403 ? 'Access to the AI function is blocked (HTTP ' + res.status + '). Check the site is public.'
+                        : 'Unexpected server reply (HTTP ' + res.status + ').';
+                    data = { error: hint };
+                }
 
                 if (!res.ok) {
                     showMessage('error', 'Could not analyse photo', data.error || 'Something went wrong. Please try again.');
